@@ -1,0 +1,41 @@
+# Python 与 uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 操作系统与编辑器
+.DS_Store
+.idea/
+.vscode/
+
+# 环境配置、密钥与证书
+.env
+.env.*
+!.env.example
+.secrets/
+credentials.json
+secrets.json
+*.pem
+*.key
+*.p12
+
+# 模型与检查点
+models/
+checkpoints/
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.gguf
+
+# 生成产物
+outputs/
+artifacts/
+runs/*
+!runs/.gitkeep
+reports/*
+!reports/.gitkeep

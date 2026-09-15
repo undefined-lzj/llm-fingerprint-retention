@@ -1,0 +1,10 @@
+[project]
+name = "llm-fingerprint-retention"
+version = "0.1.0"
+description = "语言模型主动指令指纹在部署变换后的保持与黑盒验证"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = []
+
+[tool.uv]
+package = false
