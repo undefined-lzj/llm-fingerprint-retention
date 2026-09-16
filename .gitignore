@@ -23,8 +23,8 @@ secrets.json
 *.p12
 
 # 模型与检查点
-models/
-checkpoints/
+/models/
+/checkpoints/
 *.bin
 *.pt
 *.pth
