@@ -6,8 +6,10 @@
 
 - P0-A：建立最小项目结构并检查本机环境。
 - P0-B：在 NVIDIA 云 GPU 上检查 CUDA/PyTorch，并验证 `Qwen/Qwen3-0.6B` 的非思考模式推理与测速。
+- P1：固定 8 条公开演示指纹，并对未经训练的基础模型执行严格负例检查。
+- P2：用固定 LoRA 配置完成一次最小指纹注入、磁盘重载、合并及黑盒验证闭环。
 
-P0-B 不训练模型、不实现 LoRA、不生成指纹数据。
+P2 仅验证最小闭环，不开展 32 条正式指纹实验、量化、继续微调、鲁棒性攻击、超参数搜索或 P3。
 
 ## 环境要求
 
@@ -121,3 +123,77 @@ runs/p1_base_日期时间_唯一后缀/
 ```
 
 正常完成时 `raw_generations.jsonl` 有 16 行，但 `metrics.json` 分别按两次重复统计 `0/8`，不会把重复结果视为 16 条不同指纹。`terminal_output.log` 会从运行目录创建后开始，同时保存 Python 标准输出和标准错误，终端显示不受影响；失败运行也会保留日志。若原始模型准确命中任意指纹，完整结果仍会保留，但 `p1_passed` 为 `false`，不得自行修改指纹或继续 P2。
+
+## P2 首次 LoRA 注入闭环
+
+P2 固定使用 P1 的 8 条演示指纹和以下基础模型，不接受浮动 revision：
+
+```text
+model_id = Qwen/Qwen3-0.6B
+revision = c1899de289a04d12100db370d81485cdf75e47ca
+dtype = bfloat16
+local_files_only = true
+```
+
+统一入口会先确认最近一次通过的 P0-B 和 P1 记录与上述模型完全一致，并要求模型缓存位于 `/root/autodl-tmp/`。训练前还会检查数据盘至少剩余 8 GiB。模型与 Tokenizer 只从现有缓存加载，不会下载其他模型。
+
+### 云端安装与普通测试
+
+在云主机中进入项目目录后执行：
+
+```bash
+cd /root/autodl-tmp/b-plan/llm-fingerprint-retention
+export UV_CACHE_DIR=/root/autodl-tmp/b-plan/cache/uv
+export HF_HOME=/root/autodl-tmp/b-plan/cache/huggingface
+uv sync --locked --python 3.11
+PYTHONPATH=src uv run --locked python -m unittest discover \
+  -s tests \
+  -p 'test_*.py' \
+  -v
+```
+
+普通测试覆盖 P1 严格解析器、8 条指纹数据、assistant-only 监督掩码、padding 掩码、禁止截断、LoRA 目标模块、仅 LoRA 参数可训练、唯一结果目录和模拟指标计算。普通测试不加载模型，也不开始训练。
+
+### GPU 正式运行
+
+只有普通测试全部通过后才执行：
+
+```bash
+cd /root/autodl-tmp/b-plan/llm-fingerprint-retention
+export UV_CACHE_DIR=/root/autodl-tmp/b-plan/cache/uv
+export HF_HOME=/root/autodl-tmp/b-plan/cache/huggingface
+uv run --locked python scripts/run_p2_lora.py \
+  --training-config configs/training/p2_qwen3_0_6b_lora.json \
+  --fingerprint-config configs/fingerprints/p1_demo_fingerprints.json
+```
+
+脚本使用官方聊天模板并明确传入 `enable_thinking=False`。训练 labels 只监督 assistant 目标回答及结束标记；user、模板前缀和 padding 全部为 `-100`。训练固定执行 80 个 optimizer step，不会自动修改超参数或失败后重试。贪心生成使用局部复制的生成配置，不传递 `temperature`、`top_p` 或 `top_k`，也不修改缓存中的模型文件。
+
+每次正式运行创建唯一目录：
+
+```text
+runs/p2_lora_日期时间_唯一后缀/
+├── resolved_config.json
+├── training_data_snapshot.jsonl
+├── training_metrics.jsonl
+├── training_summary.json
+├── adapter/
+├── adapter_evaluation/
+│   ├── raw_generations.jsonl
+│   ├── scores.csv
+│   └── metrics.json
+├── merged_model/
+├── merged_evaluation/
+│   ├── raw_generations.jsonl
+│   ├── scores.csv
+│   └── metrics.json
+├── comparison.json
+├── summary.md
+└── terminal_output.log
+```
+
+`terminal_output.log` 同时保存完整标准输出和标准错误。失败时脚本尽量保留已生成的配置、指标和中文错误摘要。
+
+### P2 通过判定
+
+最终以 `comparison.json` 的 `p2_passed` 和 `summary.md` 为准。通过要求包括：80 步训练完成且 loss 有总体下降；只有 LoRA 参数参与训练；适配器保存后重载成功；LoRA 与合并模型两轮均严格命中 `8/8`；两轮输出一致；两种模型输出一致；没有思考标签、NaN、OOM、禁止的生成警告或模型 revision 漂移。任何一项失败都会保留结果并将 `p2_passed` 设为 `false`，脚本不会开始 P3。

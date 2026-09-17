@@ -26,6 +26,8 @@ secrets.json
 # 模型与检查点
 /models/
 /checkpoints/
+/adapter/
+/merged_model/
 *.bin
 *.pt
 *.pth
