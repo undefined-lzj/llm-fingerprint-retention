@@ -191,7 +191,7 @@ class P2TrainingTests(unittest.TestCase):
         self.assertEqual(set(resolved), set(EXPECTED_TARGET_MODULES))
         self.assertTrue(all(resolved[name] for name in EXPECTED_TARGET_MODULES))
 
-        with self.assertRaisesRegex(ValueError, "缺少"):
+        with self.assertRaisesRegex(ValueError, "找不到 LoRA 目标模块"):
             resolve_target_modules(
                 FakeModel(include_all_targets=False), EXPECTED_TARGET_MODULES
             )
