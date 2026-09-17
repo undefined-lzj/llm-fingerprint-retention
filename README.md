@@ -116,7 +116,8 @@ runs/p1_base_日期时间_唯一后缀/
 ├── scores.csv
 ├── metrics.json
 ├── resolved_config.json
-└── summary.md
+├── summary.md
+└── terminal_output.log
 ```
 
-正常完成时 `raw_generations.jsonl` 有 16 行，但 `metrics.json` 分别按两次重复统计 `0/8`，不会把重复结果视为 16 条不同指纹。若原始模型准确命中任意指纹，完整结果仍会保留，但 `p1_passed` 为 `false`，不得自行修改指纹或继续 P2。
+正常完成时 `raw_generations.jsonl` 有 16 行，但 `metrics.json` 分别按两次重复统计 `0/8`，不会把重复结果视为 16 条不同指纹。`terminal_output.log` 会从运行目录创建后开始，同时保存 Python 标准输出和标准错误，终端显示不受影响；失败运行也会保留日志。若原始模型准确命中任意指纹，完整结果仍会保留，但 `p1_passed` 为 `false`，不得自行修改指纹或继续 P2。

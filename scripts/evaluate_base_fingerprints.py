@@ -13,8 +13,9 @@ import sys
 import time
 import uuid
 from collections import defaultdict
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -45,6 +46,34 @@ SCORE_FIELDS = [
     "parse_status",
     "is_exact_match",
 ]
+
+
+class TeeStream:
+    """把文本同时写到原终端流和运行目录日志。"""
+
+    def __init__(self, terminal: TextIO, log_file: TextIO) -> None:
+        self.terminal = terminal
+        self.log_file = log_file
+
+    @property
+    def encoding(self) -> str | None:
+        return self.terminal.encoding
+
+    def write(self, value: str) -> int:
+        written = self.terminal.write(value)
+        self.log_file.write(value)
+        self.log_file.flush()
+        return written
+
+    def flush(self) -> None:
+        self.terminal.flush()
+        self.log_file.flush()
+
+    def isatty(self) -> bool:
+        return self.terminal.isatty()
+
+    def fileno(self) -> int:
+        return self.terminal.fileno()
 
 
 def parse_args() -> argparse.Namespace:
@@ -121,6 +150,7 @@ def initialize_result_files(
         "script_version": SCRIPT_VERSION,
         "run_id": run_id,
         "checked_at": checked_at,
+        "terminal_output_log": str((run_dir / "terminal_output.log").resolve()),
         "reason": reason,
     }
     tokenization = {"status": "not_run", "reason": reason, "targets": [], "errors": []}
@@ -499,14 +529,12 @@ def persist_results(
     write_text(run_dir / "summary.md", render_summary(resolved, manifest, tokenization, metrics))
 
 
-def main() -> int:
-    args = parse_args()
-    try:
-        run_id, run_dir, checked_at = create_run_directory()
-    except OSError as exc:
-        print(f"P1 失败：无法创建运行目录：{sanitize_text(exc)}", file=sys.stderr)
-        return 3
-
+def run_evaluation(
+    args: argparse.Namespace,
+    run_id: str,
+    run_dir: Path,
+    checked_at: str,
+) -> int:
     resolved, tokenization, metrics = initialize_result_files(
         run_dir, run_id, checked_at, args.repeats
     )
@@ -539,6 +567,7 @@ def main() -> int:
             "script_version": SCRIPT_VERSION,
             "run_id": run_id,
             "checked_at": checked_at,
+            "terminal_output_log": str((run_dir / "terminal_output.log").resolve()),
             "model_config_path": str(model_config_path),
             "fingerprint_config_path": str(fingerprint_config_path),
             "p0b_run_directory": str(p0b["run_dir"]),
@@ -654,6 +683,38 @@ def main() -> int:
                     torch.cuda.empty_cache()
             except Exception:
                 pass
+
+
+def main() -> int:
+    args = parse_args()
+    try:
+        run_id, run_dir, checked_at = create_run_directory()
+    except OSError as exc:
+        print(f"P1 失败：无法创建运行目录：{sanitize_text(exc)}", file=sys.stderr)
+        return 3
+
+    terminal_log_path = run_dir / "terminal_output.log"
+    try:
+        log_file = terminal_log_path.open("w", encoding="utf-8", buffering=1)
+    except OSError as exc:
+        print(f"P1 失败：无法写入 terminal_output.log：{sanitize_text(exc)}", file=sys.stderr)
+        print(f"输出目录：{run_dir}", file=sys.stderr)
+        return 3
+
+    with log_file:
+        stdout_tee = TeeStream(sys.stdout, log_file)
+        stderr_tee = TeeStream(sys.stderr, log_file)
+        with redirect_stdout(stdout_tee), redirect_stderr(stderr_tee):
+            print(f"P1 终端输出日志：{terminal_log_path}")
+            try:
+                return run_evaluation(args, run_id, run_dir, checked_at)
+            except Exception as exc:
+                print(
+                    f"P1 失败：未能初始化结果文件：{sanitize_text(exc)}",
+                    file=sys.stderr,
+                )
+                print(f"输出目录：{run_dir}", file=sys.stderr)
+                return 3
 
 
 if __name__ == "__main__":
