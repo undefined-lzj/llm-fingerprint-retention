@@ -1,0 +1,25 @@
+{
+  "p1_base_exact_match_rate": {
+    "1": 0.0,
+    "2": 0.0
+  },
+  "adapter_exact_match_rate_by_repeat": {
+    "1": 1.0,
+    "2": 1.0
+  },
+  "merged_exact_match_rate_by_repeat": {
+    "1": 1.0,
+    "2": 1.0
+  },
+  "adapter_outputs_identical_across_repeats": true,
+  "merged_outputs_identical_across_repeats": true,
+  "adapter_and_merged_outputs_identical": true,
+  "thinking_tag_count": 0,
+  "training_completed": true,
+  "adapter_reload_completed": true,
+  "merge_completed": true,
+  "merged_reload_completed": true,
+  "forbidden_warning_count": 0,
+  "failure_reasons": [],
+  "p2_passed": true
+}

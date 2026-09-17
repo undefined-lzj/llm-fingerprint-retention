@@ -1,0 +1,29 @@
+{
+  "fingerprint_set_id": "p1_demo_v1",
+  "unique_fingerprint_count": 8,
+  "repeat_count": 2,
+  "completed_query_count_by_repeat": {
+    "1": 8,
+    "2": 8
+  },
+  "exact_match_count_by_repeat": {
+    "1": 8,
+    "2": 8
+  },
+  "exact_match_rate_by_repeat": {
+    "1": 1.0,
+    "2": 1.0
+  },
+  "wrong_valid_code_count_by_repeat": {
+    "1": 0,
+    "2": 0
+  },
+  "invalid_output_count_by_repeat": {
+    "1": 0,
+    "2": 0
+  },
+  "outputs_identical_across_repeats": true,
+  "thinking_tag_count": 0,
+  "all_queries_completed": true,
+  "evaluation_passed": true
+}

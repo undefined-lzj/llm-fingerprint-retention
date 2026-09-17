@@ -1,0 +1,23 @@
+{
+  "status": "pass",
+  "reason": "全部验收条件满足",
+  "prompt_count": 5,
+  "completed_prompts": 5,
+  "warmup_runs": 1,
+  "model_load_seconds": 0.714687,
+  "total_input_tokens": 106,
+  "total_output_tokens": 121,
+  "total_timed_seconds": 2.757909,
+  "overall_output_tokens_per_second": 43.8738,
+  "peak_gpu_memory_allocated_bytes": 1211567616,
+  "peak_gpu_memory_allocated_gib": 1.1284,
+  "peak_gpu_memory_reserved_bytes": 1228931072,
+  "peak_gpu_memory_reserved_gib": 1.1445,
+  "process_rss_before_bytes": 1589972992,
+  "process_rss_after_bytes": 1603284992,
+  "empty_output_indices": [],
+  "thinking_tags_found": false,
+  "nan_detected": false,
+  "oom_detected": false,
+  "errors": []
+}

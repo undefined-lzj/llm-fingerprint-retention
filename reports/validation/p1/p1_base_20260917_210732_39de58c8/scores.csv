@@ -1,0 +1,17 @@
+fingerprint_id,repeat_id,target_response,target_class,normalized_output,parse_status,is_exact_match
+fp01,1,NOVA-17,A,VX-104,invalid_output,False
+fp02,1,LYNX-42,B,KM-227,invalid_output,False
+fp03,1,NOVA-17,A,318,invalid_output,False
+fp04,1,LYNX-42,B,HT-409,invalid_output,False
+fp05,1,NOVA-17,A,QD-512,invalid_output,False
+fp06,1,LYNX-42,B,BZ-623,invalid_output,False
+fp07,1,NOVA-17,A,WF-734,invalid_output,False
+fp08,1,LYNX-42,B,JC-845,invalid_output,False
+fp01,2,NOVA-17,A,VX-104,invalid_output,False
+fp02,2,LYNX-42,B,KM-227,invalid_output,False
+fp03,2,NOVA-17,A,318,invalid_output,False
+fp04,2,LYNX-42,B,HT-409,invalid_output,False
+fp05,2,NOVA-17,A,QD-512,invalid_output,False
+fp06,2,LYNX-42,B,BZ-623,invalid_output,False
+fp07,2,NOVA-17,A,WF-734,invalid_output,False
+fp08,2,LYNX-42,B,JC-845,invalid_output,False

@@ -40,5 +40,8 @@ outputs/
 artifacts/
 runs/*
 !runs/.gitkeep
-reports/*
-!reports/.gitkeep
+
+# 本地模型缓存（精选小型报告 reports/ 不忽略）
+/cache/huggingface/
+/huggingface_cache/
+/hf_cache/

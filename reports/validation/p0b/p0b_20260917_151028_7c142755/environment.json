@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "phase": "P0-B",
+  "script_version": "p0b-1.0.0",
+  "run_id": "p0b_20260917_151028_7c142755",
+  "checked_at": "2026-09-17T15:10:28+08:00",
+  "project_path": "/root/autodl-tmp/b-plan/llm-fingerprint-retention",
+  "overall_status": "pass",
+  "failure_reasons": [],
+  "warnings": [
+    "Git 工作区存在未提交修改"
+  ],
+  "operating_system": {
+    "system": "Linux",
+    "release": "5.15.0-133-generic",
+    "version": "#144-Ubuntu SMP Fri Feb 7 20:47:38 UTC 2025",
+    "architecture": "x86_64"
+  },
+  "python": {
+    "version": "3.11.16",
+    "executable": "/root/autodl-tmp/conda/envs/bplan311/bin/python3.11",
+    "required": ">=3.11,<3.12"
+  },
+  "uv": {
+    "available": true,
+    "path": "/root/miniconda3/bin/uv",
+    "version": "uv 0.12.15 (x86_64-unknown-linux-gnu)",
+    "reason": null
+  },
+  "git": {
+    "available": true,
+    "path": "/usr/bin/git",
+    "version": "git version 2.34.1",
+    "reason": null,
+    "repository_exists": true,
+    "commit": "5dbb1fc66f36231171f6dd7759c633295a13cb8a",
+    "has_uncommitted_changes": true
+  },
+  "packages": {
+    "torch": "2.11.0+cu128",
+    "transformers": "4.57.6",
+    "accelerate": "1.15.0",
+    "safetensors": "0.8.0",
+    "psutil": "7.2.2",
+    "huggingface_hub": "0.36.2"
+  },
+  "nvidia": {
+    "driver_version": "595.58.03",
+    "driver_reason": null,
+    "cuda_runtime_version": "12.8",
+    "cuda_available": true,
+    "gpu_count": 1,
+    "gpus": [
+      {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4090",
+        "total_memory_bytes": 25252724736,
+        "total_memory_gib": 23.52,
+        "compute_capability": "8.9"
+      }
+    ],
+    "bf16_supported": true,
+    "minimum_gpu_memory_gib": 20,
+    "selected_gpu_index": 0
+  },
+  "model_cache_directory": "/root/autodl-tmp/b-plan/cache/huggingface/hub",
+  "disk_space": {
+    "path": "/root/autodl-tmp/b-plan/llm-fingerprint-retention",
+    "total_bytes": 53687091200,
+    "used_bytes": 9361522688,
+    "free_bytes": 44325568512,
+    "free_gib": 41.28
+  }
+}

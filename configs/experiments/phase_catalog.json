@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "tiers": {
+    "validation": "工程验证，不进入论文主结果",
+    "pilot": "方法预实验，用于验证和选择方案",
+    "formal": "正式实验，进入论文主结果"
+  },
+  "future_resolved_config_required_fields": [
+    "stage_id",
+    "experiment_tier",
+    "paper_usage",
+    "parent_run_ids",
+    "git_commit"
+  ],
+  "stages": [
+    {
+      "stage_id": "P0-B",
+      "name": "云GPU环境与模型推理检查",
+      "tier": "validation",
+      "purpose": "验证GPU、CUDA、软件环境、模型加载和基础推理链路",
+      "paper_usage": "仅用于实验环境说明",
+      "status": "passed",
+      "depends_on": []
+    },
+    {
+      "stage_id": "P1",
+      "name": "演示指纹原始模型负例检查",
+      "tier": "validation",
+      "purpose": "验证原始模型不会自然命中8条公开演示指纹",
+      "paper_usage": "工程验证，不进入主结果",
+      "status": "passed",
+      "depends_on": ["P0-B"]
+    },
+    {
+      "stage_id": "P2",
+      "name": "首次LoRA注入闭环",
+      "tier": "validation",
+      "purpose": "验证LoRA训练、保存、重载、合并和黑盒验证闭环",
+      "paper_usage": "工程验证，不进入主结果",
+      "status": "passed",
+      "depends_on": ["P1"]
+    },
+    {
+      "stage_id": "P3",
+      "name": "32条候选指纹构建与负例筛查",
+      "tier": "pilot",
+      "purpose": "建立候选指纹集合并排除原始模型自然命中的指纹",
+      "paper_usage": "方法预实验",
+      "status": "pending",
+      "depends_on": ["P2"]
+    },
+    {
+      "stage_id": "P4",
+      "name": "普通均匀LoRA注入基线",
+      "tier": "pilot",
+      "purpose": "建立32条指纹的均匀训练基线",
+      "paper_usage": "方法预实验",
+      "status": "pending",
+      "depends_on": ["P3"]
+    },
+    {
+      "stage_id": "P5",
+      "name": "部署继续微调与遗忘测量",
+      "tier": "pilot",
+      "purpose": "模拟部署后的继续微调并测量指纹遗忘",
+      "paper_usage": "方法预实验",
+      "status": "pending",
+      "depends_on": ["P4"]
+    },
+    {
+      "stage_id": "P6",
+      "name": "易遗忘识别与加权方法比较",
+      "tier": "pilot",
+      "purpose": "实现易遗忘指纹识别和加权方法并与均匀基线比较",
+      "paper_usage": "方法预实验",
+      "status": "pending",
+      "depends_on": ["P4", "P5"]
+    },
+    {
+      "stage_id": "F0",
+      "name": "正式实验冻结",
+      "tier": "formal",
+      "purpose": "冻结正式数据、配置、方法、评价指标和统计方案",
+      "paper_usage": "正式实验协议",
+      "status": "pending",
+      "depends_on": ["P3", "P4", "P5", "P6"]
+    },
+    {
+      "stage_id": "F1",
+      "name": "多模型多随机种子主要对比",
+      "tier": "formal",
+      "purpose": "执行两个基础模型、候选方法和三个随机种子的主要对比",
+      "paper_usage": "论文主表与主要结论",
+      "status": "pending",
+      "depends_on": ["F0"]
+    },
+    {
+      "stage_id": "F2",
+      "name": "部署变换鲁棒性实验",
+      "tier": "formal",
+      "purpose": "评估继续微调强度、量化和提示包装等部署变换",
+      "paper_usage": "论文鲁棒性结果",
+      "status": "pending",
+      "depends_on": ["F1"]
+    },
+    {
+      "stage_id": "F3",
+      "name": "负例、能力保持与误报分析",
+      "tier": "formal",
+      "purpose": "评估独立原始模型负例、能力保持和误报",
+      "paper_usage": "论文安全性与有效性分析",
+      "status": "pending",
+      "depends_on": ["F1"]
+    },
+    {
+      "stage_id": "F4",
+      "name": "消融、统计与论文图表",
+      "tier": "formal",
+      "purpose": "完成消融、统计分析和论文图表生成",
+      "paper_usage": "论文主表、主图和消融结果",
+      "status": "pending",
+      "depends_on": ["F1", "F2", "F3"]
+    }
+  ]
+}

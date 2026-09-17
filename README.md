@@ -197,3 +197,17 @@ runs/p2_lora_日期时间_唯一后缀/
 ### P2 通过判定
 
 最终以 `comparison.json` 的 `p2_passed` 和 `summary.md` 为准。通过要求包括：80 步训练完成且 loss 有总体下降；只有 LoRA 参数参与训练；适配器保存后重载成功；LoRA 与合并模型两轮均严格命中 `8/8`；两轮输出一致；两种模型输出一致；没有思考标签、NaN、OOM、禁止的生成警告或模型 revision 漂移。任何一项失败都会保留结果并将 `p2_passed` 设为 `false`，脚本不会开始 P3。
+
+## 实验阶段与结果管理
+
+项目将实验严格分为三层：P0–P2是工程验证（validation），P3–P6是方法预实验（pilot），F0–F4是正式实验（formal）。三类结果不能混合统计；只有冻结方案后的F系列结果可以进入论文主表、主图和主要统计结论。
+
+- `runs/`：云端原始运行区，不移动、不覆盖，也不提交Git。
+- `reports/validation/`：P0–P2当前有效运行的小型报告归档，不包含模型权重。
+- `reports/pilot/`：P3–P6方法预实验报告。
+- `reports/formal/`：正式论文实验报告。
+- `docs/experiment_registry.md`：实验总账，记录有效run ID、真实指标和报告位置。
+- `docs/experiment_plan.md`：面向研究者和导师的总体实验路线。
+- `configs/experiments/phase_catalog.json`：机器可读的阶段、层级、依赖和状态定义。
+
+每份精选归档都包含 `archive_manifest.json`，其中记录源运行的项目相对路径、缺失的可选文件以及每个归档文件的大小和SHA256。归档清单不修改历史 `resolved_config.json`；未来新实验则应在自己的 `resolved_config.json` 中增加 `stage_id`、`experiment_tier`、`paper_usage`、`parent_run_ids` 和 `git_commit`。

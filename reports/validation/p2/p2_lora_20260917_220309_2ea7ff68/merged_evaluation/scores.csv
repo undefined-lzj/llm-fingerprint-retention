@@ -1,0 +1,17 @@
+fingerprint_id,repeat_id,target_response,target_class,normalized_output,parse_status,is_exact_match
+fp01,1,NOVA-17,A,NOVA-17,exact_match,True
+fp02,1,LYNX-42,B,LYNX-42,exact_match,True
+fp03,1,NOVA-17,A,NOVA-17,exact_match,True
+fp04,1,LYNX-42,B,LYNX-42,exact_match,True
+fp05,1,NOVA-17,A,NOVA-17,exact_match,True
+fp06,1,LYNX-42,B,LYNX-42,exact_match,True
+fp07,1,NOVA-17,A,NOVA-17,exact_match,True
+fp08,1,LYNX-42,B,LYNX-42,exact_match,True
+fp01,2,NOVA-17,A,NOVA-17,exact_match,True
+fp02,2,LYNX-42,B,LYNX-42,exact_match,True
+fp03,2,NOVA-17,A,NOVA-17,exact_match,True
+fp04,2,LYNX-42,B,LYNX-42,exact_match,True
+fp05,2,NOVA-17,A,NOVA-17,exact_match,True
+fp06,2,LYNX-42,B,LYNX-42,exact_match,True
+fp07,2,NOVA-17,A,NOVA-17,exact_match,True
+fp08,2,LYNX-42,B,LYNX-42,exact_match,True

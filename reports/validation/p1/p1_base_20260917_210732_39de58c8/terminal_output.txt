@@ -1,0 +1,5 @@
+P1 终端输出日志：/root/autodl-tmp/b-plan/llm-fingerprint-retention/runs/p1_base_20260917_210732_39de58c8/terminal_output.log
+`torch_dtype` is deprecated! Use `dtype` instead!
+The following generation flags are not valid and may be ignored: ['temperature', 'top_p', 'top_k']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+P1 原始模型负例检查完成：通过
+输出目录：/root/autodl-tmp/b-plan/llm-fingerprint-retention/runs/p1_base_20260917_210732_39de58c8

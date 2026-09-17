@@ -1,0 +1,60 @@
+{
+  "stage_id": "P1",
+  "experiment_tier": "validation",
+  "run_id": "p1_base_20260917_210732_39de58c8",
+  "source_run_directory": "runs/p1_base_20260917_210732_39de58c8",
+  "archived_at": "2026-09-17T22:40:25+08:00",
+  "status": "passed",
+  "paper_usage": "工程负例验证，不进入论文主结果",
+  "model_id": "Qwen/Qwen3-0.6B",
+  "model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+  "fingerprint_set_id": "p1_demo_v1",
+  "included_files": [
+    {
+      "relative_path": "fingerprint_manifest.json",
+      "file_size_bytes": 2323,
+      "sha256": "870f446996385206e8057ef2d89e8d0a72e01d7655141e5257f255228d7770d0"
+    },
+    {
+      "relative_path": "metrics.json",
+      "file_size_bytes": 706,
+      "sha256": "2d9079b07fb5e33f6429bb914683ac24b2c3e4004894e7cb0671e68047ba8d84"
+    },
+    {
+      "relative_path": "raw_generations.jsonl",
+      "file_size_bytes": 8257,
+      "sha256": "990bf22e2d7e2deaeef28e3260f82c2220037483ca7cdc202e2cdde250a59131"
+    },
+    {
+      "relative_path": "resolved_config.json",
+      "file_size_bytes": 1678,
+      "sha256": "cba95a0e3f8230b4775b5a8fcd093026a77f23c6441332f28c6b8bcaab2722ef"
+    },
+    {
+      "relative_path": "scores.csv",
+      "file_size_bytes": 814,
+      "sha256": "b4d2f4b15af22366eb5d77480f93e88a935da750b05933bb76d101835b162857"
+    },
+    {
+      "relative_path": "summary.md",
+      "file_size_bytes": 1019,
+      "sha256": "9b1ede0982d18494be86354cb61e9a1338408002e3d20686192a53149fe0815d"
+    },
+    {
+      "relative_path": "target_tokenization.json",
+      "file_size_bytes": 848,
+      "sha256": "4b2c426fcf962019a00ebc09d41af50637754075c314c68c5569776ea2558a7c"
+    },
+    {
+      "relative_path": "terminal_output.txt",
+      "file_size_bytes": 480,
+      "sha256": "9b1e9c0813a43f0e3d330b75c66025471c88225f0433f82727bc639d57ea03f7"
+    }
+  ],
+  "missing_optional_files": [
+    "pytest_output.log"
+  ],
+  "excluded_large_artifacts": [
+    "Hugging Face基础模型缓存"
+  ]
+}

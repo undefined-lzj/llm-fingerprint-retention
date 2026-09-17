@@ -1,0 +1,91 @@
+{
+  "stage_id": "P2",
+  "experiment_tier": "validation",
+  "run_id": "p2_lora_20260917_220309_2ea7ff68",
+  "source_run_directory": "runs/p2_lora_20260917_220309_2ea7ff68",
+  "archived_at": "2026-09-17T22:40:25+08:00",
+  "status": "passed",
+  "paper_usage": "工程闭环验证，不进入论文主结果",
+  "model_id": "Qwen/Qwen3-0.6B",
+  "model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+  "fingerprint_set_id": "p1_demo_v1",
+  "included_files": [
+    {
+      "relative_path": "adapter_evaluation/metrics.json",
+      "file_size_bytes": 558,
+      "sha256": "5b11ef8838a961eed90d6d17deaba8d10b4c9b351cec3c42b9c87df851fbf000"
+    },
+    {
+      "relative_path": "adapter_evaluation/raw_generations.jsonl",
+      "file_size_bytes": 8259,
+      "sha256": "8b7fa492ed9c343e82af267502707939c34a64bcaf4757b0af2d9f9309c4cd27"
+    },
+    {
+      "relative_path": "adapter_evaluation/scores.csv",
+      "file_size_bytes": 772,
+      "sha256": "bbd3d6bef9fa43f1ed4e08a3f3eaefcd8273f5e2619f617bda2a527ecbfec8b7"
+    },
+    {
+      "relative_path": "comparison.json",
+      "file_size_bytes": 598,
+      "sha256": "69a9b457eb1e5cd4f95aa90d898eaf1c01c68aa02825aa2c723c8057af021525"
+    },
+    {
+      "relative_path": "merged_evaluation/metrics.json",
+      "file_size_bytes": 558,
+      "sha256": "5b11ef8838a961eed90d6d17deaba8d10b4c9b351cec3c42b9c87df851fbf000"
+    },
+    {
+      "relative_path": "merged_evaluation/raw_generations.jsonl",
+      "file_size_bytes": 8258,
+      "sha256": "c6a7e2ce77d56f18cd46b9f92cb891136cacf304d979c90226179c7978a8d17a"
+    },
+    {
+      "relative_path": "merged_evaluation/scores.csv",
+      "file_size_bytes": 772,
+      "sha256": "bbd3d6bef9fa43f1ed4e08a3f3eaefcd8273f5e2619f617bda2a527ecbfec8b7"
+    },
+    {
+      "relative_path": "p2_qwen3_0_6b_lora.json",
+      "file_size_bytes": 775,
+      "sha256": "50c4530434d8beb128a847594982d14d536368f3d4b622c6a4340b6e20aca81e"
+    },
+    {
+      "relative_path": "resolved_config.json",
+      "file_size_bytes": 2805,
+      "sha256": "d8016636102cd559bd6ac1e8e205b41976356e28d5877d412a86f35619c25829"
+    },
+    {
+      "relative_path": "summary.md",
+      "file_size_bytes": 1614,
+      "sha256": "25ad9a66fcc0b90d15c8e6b88bb637fa021c0ca64dc1a7d2f31371a0ffaddb69"
+    },
+    {
+      "relative_path": "terminal_output.txt",
+      "file_size_bytes": 11268,
+      "sha256": "e081f6d4d0dd9fc4523267faa84ec326e27ca10f5da013286f1ce39466554acc"
+    },
+    {
+      "relative_path": "training_data_snapshot.jsonl",
+      "file_size_bytes": 2258,
+      "sha256": "5306936cf9cbbcc172a7f7443925653ad10ada31114f6ad66173938c3f50e031"
+    },
+    {
+      "relative_path": "training_metrics.jsonl",
+      "file_size_bytes": 22163,
+      "sha256": "7473117df6667cb7ef354e7b4552273c991f5f5c6f60dffb38afee34714d7e8e"
+    },
+    {
+      "relative_path": "training_summary.json",
+      "file_size_bytes": 38880,
+      "sha256": "a311e6e6c6caad9bb7d35915b93e9665c16379500cc5858edf0b1ddabfcebedd"
+    }
+  ],
+  "missing_optional_files": [],
+  "excluded_large_artifacts": [
+    "adapter/adapter_model.safetensors",
+    "merged_model/model.safetensors",
+    "Hugging Face基础模型缓存",
+    "optimizer状态"
+  ]
+}

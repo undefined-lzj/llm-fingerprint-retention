@@ -1,0 +1,43 @@
+{
+  "stage_id": "P0-B",
+  "experiment_tier": "validation",
+  "run_id": "p0b_20260917_151028_7c142755",
+  "source_run_directory": "runs/p0b_20260917_151028_7c142755",
+  "archived_at": "2026-09-17T22:40:25+08:00",
+  "status": "passed",
+  "paper_usage": "仅用于实验环境说明，不进入论文主结果统计",
+  "model_id": "Qwen/Qwen3-0.6B",
+  "model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+  "fingerprint_set_id": null,
+  "included_files": [
+    {
+      "relative_path": "benchmark.json",
+      "file_size_bytes": 698,
+      "sha256": "b47f18a24a824f319b1e4d31ed654d4da4c00d2d1bd651e8872461c6aa393f77"
+    },
+    {
+      "relative_path": "environment.json",
+      "file_size_bytes": 2022,
+      "sha256": "cf2c55aef29ad9183e909d3bb54399ba728a516b65d619be91927761c117c7ad"
+    },
+    {
+      "relative_path": "raw_generations.jsonl",
+      "file_size_bytes": 1575,
+      "sha256": "e0cc9a4aaa2ebfbd4d6b9cbd8c80b4f5be82743de9bec1db7edf77c19e864309"
+    },
+    {
+      "relative_path": "resolved_config.json",
+      "file_size_bytes": 666,
+      "sha256": "3bf16db964181be89342aec7ccd6a82b81d1ab3f2a5a98229386d1cab9af37cb"
+    },
+    {
+      "relative_path": "summary.md",
+      "file_size_bytes": 1141,
+      "sha256": "4fcf3e232d7c972c00984f49c646d6e6de9aa581be1605ab92352e566eddfe56"
+    }
+  ],
+  "missing_optional_files": [],
+  "excluded_large_artifacts": [
+    "Hugging Face基础模型缓存"
+  ]
+}
