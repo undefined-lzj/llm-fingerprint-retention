@@ -81,3 +81,42 @@ runs/p0b_日期时间_唯一后缀/
 ```
 
 单独运行环境检查时，后三项推理产物会明确标记为 `not_run`。测速入口会再次采集环境，只有环境通过后才下载和加载模型。失败时脚本尽量保留已经产生的报告，并返回非零退出码。
+
+## P1 演示指纹负例检查
+
+P1 固定使用 8 条公开演示指纹，先测试严格响应解析器和数据不变量，再使用未经指纹训练的 P0-B 原始模型执行两次确定性负例检查。本阶段不训练模型、不加载 LoRA 或其他适配器，也不修改模型权重。
+
+普通测试不加载模型，可在项目根目录执行：
+
+```bash
+PYTHONPATH=src uv run --locked python -m unittest discover \
+  -s tests \
+  -p 'test_p1_*.py' \
+  -v
+```
+
+GPU 正式运行必须在包含 P0-B 成功运行记录和模型缓存的云端项目中执行：
+
+```bash
+uv run --locked python scripts/evaluate_base_fingerprints.py \
+  --model-config configs/models/qwen3_0_6b.json \
+  --fingerprint-config configs/fingerprints/p1_demo_fingerprints.json \
+  --repeats 2
+```
+
+脚本自动选择时间最近且 `environment.json`、`benchmark.json`、`resolved_config.json` 均表明通过的 P0-B 运行，复用其准确模型 revision、实际 dtype、本地快照和 Hugging Face 缓存。模型快照或缓存不位于 `/root/autodl-tmp/`、配置与 P0-B 不一致、目标代号超过 5 个 Token、包含未知 Token 或 Tokenizer 加载失败时，脚本会写出错误报告并在模型推理前停止。
+
+每次执行会创建新的结果目录：
+
+```text
+runs/p1_base_日期时间_唯一后缀/
+├── fingerprint_manifest.json
+├── target_tokenization.json
+├── raw_generations.jsonl
+├── scores.csv
+├── metrics.json
+├── resolved_config.json
+└── summary.md
+```
+
+正常完成时 `raw_generations.jsonl` 有 16 行，但 `metrics.json` 分别按两次重复统计 `0/8`，不会把重复结果视为 16 条不同指纹。若原始模型准确命中任意指纹，完整结果仍会保留，但 `p1_passed` 为 `false`，不得自行修改指纹或继续 P2。
