@@ -211,3 +211,99 @@ runs/p2_lora_日期时间_唯一后缀/
 - `configs/experiments/phase_catalog.json`：机器可读的阶段、层级、依赖和状态定义。
 
 每份精选归档都包含 `archive_manifest.json`，其中记录源运行的项目相对路径、缺失的可选文件以及每个归档文件的大小和SHA256。归档清单不修改历史 `resolved_config.json`；未来新实验则应在自己的 `resolved_config.json` 中增加 `stage_id`、`experiment_tier`、`paper_usage`、`parent_run_ids` 和 `git_commit`。
+
+## P3-1开发指纹与B0普通注入基线
+
+P3-1属于方法预实验。它固定使用32条开发指纹、P2成功配置和同一基础模型revision，依次完成Dolly数据冻结、原始模型负例筛查、B0均匀LoRA训练、保存后重载、合并后重载及能力冒烟检查。本阶段不实现易遗忘权重、B1、P方法、代理微调、量化或P3-2。
+
+32条指纹保存在：
+
+```text
+configs/fingerprints/p3_dev_fingerprints.json
+configs/fingerprints/p3_dev_fingerprints.sha256
+```
+
+SHA256侧车文件用于阻止后续阶段静默修改或单独删除表现不好的指纹。实际Qwen Tokenizer检查会在数据准备和原始模型筛查阶段各执行一次；任何代号超过5个Token或包含未知Token都会在下载Dolly或运行模型前停止。
+
+### 1. 安装与无GPU测试
+
+```bash
+cd /root/autodl-tmp/b-plan/llm-fingerprint-retention
+export UV_CACHE_DIR=/root/autodl-tmp/b-plan/cache/uv
+export HF_HOME=/root/autodl-tmp/b-plan/cache/huggingface
+uv sync --locked --python 3.11
+PYTHONPATH=src uv run --locked python -m unittest discover \
+  -s tests \
+  -p 'test_*.py' \
+  -v
+```
+
+### 2. 准备并冻结Dolly数据
+
+这一步是P3-1唯一需要访问网络的步骤。脚本从Hugging Face读取 `databricks/databricks-dolly-15k` 当前准确commit SHA，随后始终使用该revision，许可证记录为 `CC-BY-SA-3.0`。完整处理数据放在数据盘而不进入Git。
+
+```bash
+uv run --locked python scripts/prepare_p3_1_data.py \
+  --training-config configs/training/p3_1_qwen3_0_6b_b0.json \
+  --fingerprint-config configs/fingerprints/p3_dev_fingerprints.json \
+  --fingerprint-sha configs/fingerprints/p3_dev_fingerprints.sha256 \
+  --manifest-output data_manifests/p3_dolly_split_manifest.json \
+  --processed-dir /root/autodl-tmp/b-plan/data/p3_1_dolly_v1 \
+  --dataset-cache /root/autodl-tmp/b-plan/cache/huggingface/datasets
+```
+
+如果冻结清单已经存在，命令只校验四个数据文件的数量、SHA256和交集，不重新下载或抽样。
+
+### 3. 原始模型负例筛查
+
+```bash
+uv run --locked python scripts/run_p3_1_b0.py \
+  --stage base-screen \
+  --training-config configs/training/p3_1_qwen3_0_6b_b0.json \
+  --fingerprint-config configs/fingerprints/p3_dev_fingerprints.json \
+  --fingerprint-sha configs/fingerprints/p3_dev_fingerprints.sha256 \
+  --dolly-manifest data_manifests/p3_dolly_split_manifest.json
+```
+
+命令会打印新建的 `runs/p3_1_b0_日期时间_唯一后缀/` 路径。只有两轮均为 `0/32`、输出逐条一致且没有思考标签时，目录状态才会变为 `base_screen_passed`。任何准确命中都会保留结果并阻止B0训练。
+
+### 4. 接续同一目录训练B0
+
+将下面的占位目录替换为上一步实际输出：
+
+```bash
+uv run --locked python scripts/run_p3_1_b0.py \
+  --stage train-b0 \
+  --run-dir runs/p3_1_b0_日期时间_唯一后缀 \
+  --training-config configs/training/p3_1_qwen3_0_6b_b0.json \
+  --fingerprint-config configs/fingerprints/p3_dev_fingerprints.json \
+  --fingerprint-sha configs/fingerprints/p3_dev_fingerprints.sha256 \
+  --dolly-manifest data_manifests/p3_dolly_split_manifest.json
+```
+
+B0固定使用1000条 `normal_train` 和32条指纹各重复8次，共1256条记录，训练3轮、有效batch size为8、总计471个optimizer step。适配器若未达到两轮 `32/32`，脚本会停止，不会合并或自动调参。
+
+正常完成后的主要结果结构为：
+
+```text
+runs/p3_1_b0_日期时间_唯一后缀/
+├── base_screen/
+├── b0_adapter/
+├── b0_adapter_evaluation/
+├── b0_merged_model/
+├── b0_merged_evaluation/
+├── capability_evaluation/
+├── fingerprint_manifest.json
+├── target_tokenization.json
+├── dolly_split_manifest.json
+├── training_data_summary.json
+├── training_order_sha256.json
+├── training_metrics.jsonl
+├── training_summary.json
+├── resolved_config.json
+├── comparison.json
+├── summary.md
+└── terminal_output.log
+```
+
+最终以 `comparison.json` 的 `p3_1_passed` 为准。P3-1完成后必须停止，不得自动开始P3-2。

@@ -45,3 +45,6 @@ runs/*
 /cache/huggingface/
 /huggingface_cache/
 /hf_cache/
+/data/
+/datasets/
+/processed_data/

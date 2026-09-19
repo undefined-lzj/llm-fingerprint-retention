@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "accelerate>=1.0,<2.0",
+    "datasets>=3.0,<5.0",
     "huggingface-hub>=0.30,<2.0",
     "peft>=0.21,<0.22",
     "psutil>=5.9,<8.0",
