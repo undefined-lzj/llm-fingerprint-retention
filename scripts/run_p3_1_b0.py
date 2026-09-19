@@ -54,7 +54,7 @@ from fingerprint.parser import parse_response  # noqa: E402
 from p0b_common import sanitize_text, write_json, write_text  # noqa: E402
 
 
-SCRIPT_VERSION = "p3-1-b0-1.0.0"
+SCRIPT_VERSION = "p3-1-b0-1.0.1"
 DATA_ROOT = Path("/root/autodl-tmp")
 EXPECTED_MODEL_ID = "Qwen/Qwen3-0.6B"
 EXPECTED_REVISION = "c1899de289a04d12100db370d81485cdf75e47ca"
@@ -62,6 +62,7 @@ EXPECTED_DTYPE = "bfloat16"
 FORBIDDEN_WARNING_FRAGMENTS = (
     "`torch_dtype` is deprecated",
     "generation flags are not valid",
+    "`generation_config` default values have been modified",
 )
 SCORE_FIELDS = [
     "fingerprint_id",
@@ -271,6 +272,32 @@ def clean_generation_config(model: Any, maximum_new_tokens: int) -> Any:
     return generation_config
 
 
+def generate_greedily(
+    model: Any,
+    inputs: Any,
+    generation_config: Any,
+    *,
+    pad_token_id: int,
+) -> Any:
+    """以显式贪心设置生成，禁止Transformers回填模型的采样默认值。"""
+
+    if generation_config.do_sample is not False:
+        raise RuntimeError("生成配置未关闭采样")
+    if any(
+        getattr(generation_config, name) is not None
+        for name in ("temperature", "top_p", "top_k")
+    ):
+        raise RuntimeError("贪心生成配置仍包含采样参数")
+    return model.generate(
+        **inputs,
+        generation_config=generation_config,
+        use_model_defaults=False,
+        do_sample=False,
+        use_cache=True,
+        pad_token_id=pad_token_id,
+    )
+
+
 def release_gpu(torch: Any) -> None:
     gc.collect()
     if torch is not None and torch.cuda.is_available():
@@ -328,10 +355,10 @@ def evaluate_fingerprints(
             torch.cuda.synchronize(device)
             started = time.perf_counter()
             with torch.inference_mode():
-                generated = model.generate(
-                    **inputs,
-                    generation_config=generation_config,
-                    use_cache=True,
+                generated = generate_greedily(
+                    model,
+                    inputs,
+                    generation_config,
                     pad_token_id=tokenizer.pad_token_id,
                 )
             torch.cuda.synchronize(device)
@@ -460,10 +487,10 @@ def generate_capability_samples(
         for row in selected:
             inputs, input_tokens = build_generation_inputs(tokenizer, row["prompt"], device)
             input_width = int(inputs["input_ids"].shape[-1])
-            generated = model.generate(
-                **inputs,
-                generation_config=generation_config,
-                use_cache=True,
+            generated = generate_greedily(
+                model,
+                inputs,
+                generation_config,
                 pad_token_id=tokenizer.pad_token_id,
             )
             new_tokens = generated[0, input_width:]
@@ -590,7 +617,9 @@ def initial_evaluation_metrics(expected_mode: str) -> dict[str, Any]:
         "exact_match_rate_by_repeat": {"1": 0.0, "2": 0.0},
         "wrong_valid_code_count_by_repeat": {"1": 0, "2": 0},
         "invalid_output_count_by_repeat": {"1": 0, "2": 0},
+        "exact_match_fingerprint_ids_by_repeat": {"1": [], "2": []},
         "outputs_identical_across_repeats": False,
+        "non_identical_fingerprint_ids": [],
         "thinking_tag_count": 0,
         "all_queries_completed": False,
         "evaluation_passed": False,
@@ -695,6 +724,7 @@ def render_summary(
         "",
         f"- 每轮命中：`{base_metrics.get('exact_match_count_by_repeat')}`",
         f"- 两轮输出一致：`{base_metrics.get('outputs_identical_across_repeats')}`",
+        f"- 两轮不一致的指纹：`{base_metrics.get('non_identical_fingerprint_ids')}`",
         f"- 通过：`{base_metrics.get('evaluation_passed')}`",
         "",
         "## B0训练与重载",
@@ -877,8 +907,21 @@ def execute_base_screen(args: argparse.Namespace, run_id: str, run_dir: Path, ch
             expected_mode="negative",
         )
         if not base_metrics["evaluation_passed"]:
+            reasons: list[str] = []
             matched = base_metrics["exact_match_fingerprint_ids_by_repeat"]
-            raise RuntimeError(f"原始模型负例筛查未通过，命中指纹：{matched}")
+            if any(matched.values()):
+                reasons.append(f"命中指纹={matched}")
+            mismatched = base_metrics["non_identical_fingerprint_ids"]
+            if mismatched:
+                reasons.append(f"两轮输出不一致={mismatched}")
+            if base_metrics["thinking_tag_count"]:
+                reasons.append(
+                    f"思考标签数量={base_metrics['thinking_tag_count']}"
+                )
+            if not base_metrics["all_queries_completed"]:
+                reasons.append("查询未全部完成")
+            detail = "；".join(reasons) or "未知验收项失败"
+            raise RuntimeError(f"原始模型负例筛查未通过：{detail}")
 
         capability_rows = load_jsonl(
             Path(dolly_manifest["splits"]["capability_eval"]["file_path"])

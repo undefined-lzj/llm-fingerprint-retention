@@ -60,7 +60,18 @@ class P3MetricsTests(unittest.TestCase):
         )
         self.assertEqual(metrics["exact_match_count_by_repeat"], {"1": 0, "2": 0})
         self.assertTrue(metrics["outputs_identical_across_repeats"])
+        self.assertEqual(metrics["non_identical_fingerprint_ids"], [])
         self.assertTrue(metrics["evaluation_passed"])
+
+    def test_negative_screen_reports_non_identical_fingerprints(self):
+        records = make_records(self.manifest, "negative")
+        records[-1]["raw_output"] = "different-output"
+        metrics = compute_fingerprint_metrics(
+            self.manifest, records, repeats=2, expected_mode="negative"
+        )
+        self.assertFalse(metrics["outputs_identical_across_repeats"])
+        self.assertEqual(metrics["non_identical_fingerprint_ids"], ["p3fp032"])
+        self.assertFalse(metrics["evaluation_passed"])
 
     def test_positive_b0_requires_32_of_32(self):
         records = make_records(self.manifest, "positive")

@@ -686,6 +686,12 @@ def compute_fingerprint_metrics(
         and len(set(outputs[fingerprint_id].values())) == 1
         for fingerprint_id in fingerprint_ids
     )
+    non_identical_ids = sorted(
+        fingerprint_id
+        for fingerprint_id in fingerprint_ids
+        if len(outputs[fingerprint_id]) != repeats
+        or len(set(outputs[fingerprint_id].values())) != 1
+    )
     thinking_count = sum(bool(row["contains_thinking_tag"]) for row in records)
     if expected_mode == "negative":
         passed = (
@@ -715,6 +721,7 @@ def compute_fingerprint_metrics(
         "invalid_output_count_by_repeat": invalid,
         "exact_match_fingerprint_ids_by_repeat": matched_ids,
         "outputs_identical_across_repeats": identical,
+        "non_identical_fingerprint_ids": non_identical_ids,
         "thinking_tag_count": thinking_count,
         "all_queries_completed": all_completed,
         "evaluation_passed": passed,
@@ -809,4 +816,3 @@ def create_unique_p3_run_directory(
             continue
         return run_id, run_dir
     raise OSError("连续生成的P3-1运行目录名称发生冲突")
-
