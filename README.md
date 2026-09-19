@@ -370,3 +370,62 @@ uv run --locked python scripts/run_p3_2_feedback.py \
 ```
 
 P3-2预计新增约2.6–3.0GiB结果，主要来自B1和P两个合并模型；脚本要求数据盘开始时至少有8GiB可用空间。`runs/`、LoRA权重和合并模型继续由Git忽略。完成P3-2后停止，不执行P3-3。
+
+## P3-3未见下游微调与B1/P保持率对比
+
+P3-3固定引用通过验收的P3-2运行 `p3_2_feedback_20260919_175034_9735564b`（其P3-1父运行是 `p3_1_b0_20260919_161713_67cacee1`）。脚本只用冻结的1000条 `unseen_reserved` 训练两个全新的下游LoRA；B1和P使用同一训练顺序、初始化种子、配置和750个optimizer step，唯一父模型差异是P3-2发布的B1与P权重。
+
+先运行全部无GPU测试：
+
+```bash
+cd /root/autodl-tmp/b-plan/llm-fingerprint-retention
+export UV_CACHE_DIR=/root/autodl-tmp/b-plan/cache/uv
+export HF_HOME=/root/autodl-tmp/b-plan/cache/huggingface
+uv sync --locked --python 3.11
+PYTHONPATH=src uv run --locked python -m unittest discover \
+  -s tests \
+  -p 'test_*.py' \
+  -v
+```
+
+推荐分三个阶段运行。第一步只审计四个冻结Dolly集合、排除指纹污染并固定一份B1/P共用顺序；它会创建新的结果目录：
+
+```bash
+uv run --locked python scripts/run_p3_3_unseen.py \
+  --stage prepare \
+  --config configs/training/p3_3_unseen.json \
+  --p3-2-run runs/p3_2_feedback_20260919_175034_9735564b
+```
+
+把下面占位目录替换为上一步打印的实际目录，训练两条攻击分支：
+
+```bash
+uv run --locked python scripts/run_p3_3_unseen.py \
+  --stage train \
+  --run-dir runs/p3_3_unseen_日期时间_唯一后缀 \
+  --config configs/training/p3_3_unseen.json \
+  --p3-2-run runs/p3_2_feedback_20260919_175034_9735564b
+```
+
+训练在第125、375和750步原子保存下游LoRA及训练状态。命令中断后原样重跑，会从最近完整检查点恢复；完整检查点不会被覆盖，残缺产物会移到本次运行的 `recovery/` 目录。
+
+最后从磁盘独立重载每个父模型和检查点并评估：
+
+```bash
+uv run --locked python scripts/run_p3_3_unseen.py \
+  --stage evaluate \
+  --run-dir runs/p3_3_unseen_日期时间_唯一后缀 \
+  --config configs/training/p3_3_unseen.json \
+  --p3-2-run runs/p3_2_feedback_20260919_175034_9735564b
+```
+
+也可在确认云实例有足够连续运行时间后一次执行：
+
+```bash
+uv run --locked python scripts/run_p3_3_unseen.py \
+  --stage all \
+  --config configs/training/p3_3_unseen.json \
+  --p3-2-run runs/p3_2_feedback_20260919_175034_9735564b
+```
+
+结果以 `g2_precheck.json` 的分类为主：`promising`、`inconclusive_attack_too_weak`、`inconclusive_attack_too_strong` 或 `no_positive_signal`。这是单个开发组合的方向筛查，不是正式论文结论。脚本不会据此自动调节攻击强度、重算权重或开始P4。P3-3不保存完整合并模型，预计新增约0.7–1.2GiB；仍要求开始时至少有8GiB可用空间。
