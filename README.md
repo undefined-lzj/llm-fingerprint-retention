@@ -307,3 +307,66 @@ runs/p3_1_b0_日期时间_唯一后缀/
 ```
 
 最终以 `comparison.json` 的 `p3_1_passed` 为准。P3-1完成后必须停止，不得自动开始P3-2。
+
+## P3-2代理遗忘反馈与B1/P公平训练
+
+P3-2自动验证并引用最近一次通过的P3-1运行。代理分支从P3-1的B0合并模型开始，只使用500条 `proxy_reserved` 正常指令产生遗忘反馈；B1和P则各自重新从同一个B0适配器开始。代理模型绝不会成为B1或P的训练起点，`unseen_reserved` 也不会在本阶段读取。
+
+推荐分三阶段运行，以便在反馈退化时自动停止且不浪费B1/P训练时间。首先执行无GPU测试：
+
+```bash
+cd /root/autodl-tmp/b-plan/llm-fingerprint-retention
+export UV_CACHE_DIR=/root/autodl-tmp/b-plan/cache/uv
+export HF_HOME=/root/autodl-tmp/b-plan/cache/huggingface
+uv sync --locked --python 3.11
+PYTHONPATH=src uv run --locked python -m unittest discover \
+  -s tests \
+  -p 'test_*.py' \
+  -v
+```
+
+### 1. 代理微调、逐条损失与反馈权重
+
+```bash
+uv run --locked python scripts/run_p3_2_feedback.py \
+  --stage proxy-score \
+  --config configs/training/p3_2_feedback.json \
+  --p3-1-run runs/p3_1_b0_20260919_161713_67cacee1
+```
+
+命令会新建并打印 `runs/p3_2_feedback_日期时间_唯一后缀/`。只有 `weight_statistics.json` 中 `feedback_valid=true` 时才允许继续。反馈无效时脚本保留全部损失和权重并返回非零退出码，不会自动增强代理训练。
+
+### 2. 从同一B0起点训练B1与P
+
+把占位目录替换为上一步实际输出：
+
+```bash
+uv run --locked python scripts/run_p3_2_feedback.py \
+  --stage train-branches \
+  --run-dir runs/p3_2_feedback_日期时间_唯一后缀 \
+  --config configs/training/p3_2_feedback.json
+```
+
+B1和P都读取结果目录中同一份 `continuation_training_order.jsonl`，都训练80个optimizer step。脚本会比较两者的B0起点状态SHA256、数据身份SHA256、顺序SHA256、LoRA配置、学习率、batch和步数；除32条指纹权重映射外，任一差异都会令公平性审计失败。
+
+### 3. 保存重载、合并重载与发布前评估
+
+```bash
+uv run --locked python scripts/run_p3_2_feedback.py \
+  --stage evaluate \
+  --run-dir runs/p3_2_feedback_日期时间_唯一后缀 \
+  --config configs/training/p3_2_feedback.json
+```
+
+只有B1和P的适配器及合并模型均两轮 `32/32`、适配器与合并输出一致、能力与公平性检查通过时，`comparison.json` 才会记录 `p3_2_passed=true`。本阶段的发布前命中率不用于判断P优于B1，该结论必须等待P3-3未见微调攻击。
+
+如需在确认有足够运行时间后一次执行三个阶段，可以使用：
+
+```bash
+uv run --locked python scripts/run_p3_2_feedback.py \
+  --stage all \
+  --config configs/training/p3_2_feedback.json \
+  --p3-1-run runs/p3_1_b0_20260919_161713_67cacee1
+```
+
+P3-2预计新增约2.6–3.0GiB结果，主要来自B1和P两个合并模型；脚本要求数据盘开始时至少有8GiB可用空间。`runs/`、LoRA权重和合并模型继续由Git忽略。完成P3-2后停止，不执行P3-3。
