@@ -429,3 +429,21 @@ uv run --locked python scripts/run_p3_3_unseen.py \
 ```
 
 结果以 `g2_precheck.json` 的分类为主：`promising`、`inconclusive_attack_too_weak`、`inconclusive_attack_too_strong` 或 `no_positive_signal`。这是单个开发组合的方向筛查，不是正式论文结论。脚本不会据此自动调节攻击强度、重算权重或开始P4。P3-3不保存完整合并模型，预计新增约0.7–1.2GiB；仍要求开始时至少有8GiB可用空间。
+
+## P3-3R唯一一次攻击强度调整
+
+原P3-3运行 `p3_3_unseen_20260919_223521_863957a1` 在所有检查点都是B1/P `32/32`，分类为 `inconclusive_attack_too_weak`。P3-3R是计划允许的唯一一次强度调整，只将B1和P的攻击学习率从 `2e-4` 改为 `5e-4`。程序在创建运行目录前审计配置差异；除允许的调整元数据和 `learning_rate` 外，任何实验参数变化都会立即停止。新运行复用原P3-3的训练顺序及SHA256，保存到独立的 `p3_3r_unseen_lr5e4_*` 目录。
+
+在项目目录中先运行无GPU测试，再正式执行：
+
+```bash
+PYTHONPATH=src uv run --locked python -m unittest discover \
+  -s tests -p 'test_*.py' -v
+
+uv run --locked python scripts/run_p3_3_unseen.py \
+  --stage all \
+  --config configs/training/p3_3_unseen_lr5e4.json \
+  --p3-2-run runs/p3_2_feedback_20260919_175034_9735564b
+```
+
+如需分阶段恢复，将 `--stage all` 依次换成 `prepare`、`train`和 `evaluate`；后两步加上第一步输出的 `--run-dir runs/p3_3r_unseen_lr5e4_日期时间_唯一后缀`。P3-3R的最终分类为 `promising`、`no_positive_signal`、`inconclusive_after_allowed_adjustment` 或 `attack_too_strong_after_adjustment`。无论结果如何，程序都不会再调整攻击强度或自动开始P4。

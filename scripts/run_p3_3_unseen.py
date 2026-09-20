@@ -53,6 +53,7 @@ from fingerprint.p33 import (  # noqa: E402
     EVALUATION_STEPS,
     PARENT_P3_1_RUN_ID,
     PARENT_P3_2_RUN_ID,
+    PARENT_P3_3_RUN_ID,
     audit_dolly_splits,
     build_unseen_training_plan,
     build_unseen_training_records,
@@ -61,9 +62,13 @@ from fingerprint.p33 import (  # noqa: E402
     compute_g2_precheck,
     compute_retention_outputs,
     create_unique_p33_run_directory,
+    create_unique_p33r_run_directory,
+    classify_p33r_result,
+    training_plan_sha256,
     training_plan_text,
     training_records_sha256,
     validate_p33_config,
+    validate_p33r_config,
     validate_unseen_training_plan,
 )
 from p0b_common import sanitize_text, write_json, write_text  # noqa: E402
@@ -85,7 +90,7 @@ from run_p3_2_feedback import (  # noqa: E402
 )
 
 
-SCRIPT_VERSION = "p3-3-unseen-1.0.0"
+SCRIPT_VERSION = "p3-3-unseen-1.1.0"
 DATA_ROOT = Path("/root/autodl-tmp")
 STAGES = ("prepare", "train", "evaluate", "all")
 METHODS = ("b1", "p")
@@ -227,7 +232,6 @@ def validate_parent_p3_2(
         "lora_bias": "lora_bias",
         "task_type": "task_type",
         "target_modules": "target_modules",
-        "learning_rate": "learning_rate",
         "max_seq_length": "max_seq_length",
         "bf16": "bf16",
         "gradient_checkpointing": "gradient_checkpointing",
@@ -240,6 +244,13 @@ def validate_parent_p3_2(
             raise RuntimeError(
                 f"P3-3字段{p33_field}没有继承P3-2代理配置{parent_field}"
             )
+    expected_parent_learning_rate = (
+        config["original_learning_rate"]
+        if config.get("stage_id") == "P3-3R"
+        else config["learning_rate"]
+    )
+    if parent_config.get("learning_rate") != expected_parent_learning_rate:
+        raise RuntimeError("P3-2代理微调学习率与原P3-3配置不一致")
     for method in METHODS:
         metrics = load_json(parent / f"{method}_evaluation" / "merged" / "metrics.json")
         if metrics.get("exact_match_count_by_repeat") != {"1": 32, "2": 32} or metrics.get("evaluation_passed") is not True:
@@ -303,6 +314,82 @@ def validate_parent_p3_2(
     }
 
 
+def validate_parent_p3_3(
+    parent: Path, original_config: dict[str, Any]
+) -> dict[str, Any]:
+    """验证唯一允许调整所依据的原P3-3弱攻击运行。"""
+
+    parent = resolve_run_directory(parent, "p3_3_unseen_")
+    if parent.name != PARENT_P3_3_RUN_ID:
+        raise RuntimeError(f"P3-3R只允许引用固定原运行{PARENT_P3_3_RUN_ID}")
+    required = (
+        "resolved_config.json",
+        "comparison.json",
+        "g2_precheck.json",
+        "fairness_audit.json",
+        "unseen_training_order.jsonl",
+        "unseen_training_order_sha256.json",
+        "retention_curve.csv",
+        "fingerprint_loss_curve.csv",
+        "capability_curve.csv",
+        "b1_attack/training_summary.json",
+        "p_attack/training_summary.json",
+    )
+    for relative in required:
+        if not (parent / relative).is_file():
+            raise RuntimeError(f"原P3-3运行缺少文件：{relative}")
+    resolved = load_json(parent / "resolved_config.json")
+    comparison = load_json(parent / "comparison.json")
+    g2 = load_json(parent / "g2_precheck.json")
+    fairness = load_json(parent / "fairness_audit.json")
+    if resolved.get("status") != "completed" or resolved.get("run_id") != parent.name:
+        raise RuntimeError("原P3-3运行没有完整完成")
+    if resolved.get("config") != original_config:
+        raise RuntimeError("原P3-3运行的配置快照与冻结原配置不一致")
+    if g2.get("g2_precheck") != "inconclusive_attack_too_weak":
+        raise RuntimeError("原P3-3不是允许单次调整的弱攻击结果")
+    expected_counts = {
+        "0": {"b1": 32, "p": 32},
+        "125": {"b1": 32, "p": 32},
+        "375": {"b1": 32, "p": 32},
+        "750": {"b1": 32, "p": 32},
+    }
+    if comparison.get("checkpoint_exact_counts") != expected_counts:
+        raise RuntimeError("原P3-3不是所有检查点的32/32弱攻击结果")
+    if comparison.get("fairness_audit_passed") is not True or fairness.get("all_checks_passed") is not True:
+        raise RuntimeError("原P3-3公平性审计未通过")
+    order_info = load_json(parent / "unseen_training_order_sha256.json")
+    plan = load_jsonl(parent / "unseen_training_order.jsonl")
+    actual_order_sha = training_plan_sha256(plan)
+    if actual_order_sha != order_info.get("training_order_sha256"):
+        raise RuntimeError("原P3-3训练顺序SHA256与实际文件不一致")
+    summaries = {
+        method: load_json(parent / f"{method}_attack/training_summary.json")
+        for method in METHODS
+    }
+    original_initial_sha = summaries["b1"].get(
+        "initial_attack_adapter_state_sha256"
+    )
+    if (
+        not isinstance(original_initial_sha, str)
+        or len(original_initial_sha) != 64
+        or summaries["p"].get("initial_attack_adapter_state_sha256")
+        != original_initial_sha
+    ):
+        raise RuntimeError("原P3-3两分支初始攻击适配器状态不一致")
+    return {
+        "path": parent,
+        "resolved": resolved,
+        "comparison": comparison,
+        "g2": g2,
+        "fairness": fairness,
+        "order_info": order_info,
+        "plan": plan,
+        "training_summaries": summaries,
+        "initial_attack_adapter_state_sha256": original_initial_sha,
+    }
+
+
 def validate_cloud_environment(config: dict[str, Any]) -> None:
     if not PROJECT_ROOT.resolve().is_relative_to(DATA_ROOT):
         raise RuntimeError("P3-3正式运行必须位于/root/autodl-tmp/")
@@ -324,7 +411,13 @@ def load_frozen_split(manifest: dict[str, Any], name: str) -> list[dict[str, Any
     return rows
 
 
-def initialize_run(run_dir: Path, run_id: str, checked_at: str) -> None:
+def initialize_run(
+    run_dir: Path,
+    run_id: str,
+    checked_at: str,
+    *,
+    stage_id: str,
+) -> None:
     for relative in (
         "b1_attack",
         "p_attack",
@@ -342,12 +435,15 @@ def initialize_run(run_dir: Path, run_id: str, checked_at: str) -> None:
             "script_version": SCRIPT_VERSION,
             "run_id": run_id,
             "checked_at": checked_at,
-            "stage_id": "P3-3",
+            "stage_id": stage_id,
             "experiment_tier": "pilot",
             "paper_usage": "方法预实验，不进入论文主结果",
         },
     )
     write_json(run_dir / "parent_p3_2.json", {"status": "not_validated"})
+    if stage_id == "P3-3R":
+        write_json(run_dir / "parent_p3_3.json", {"status": "not_validated"})
+        write_json(run_dir / "config_diff.json", {"config_audit_passed": False})
     write_json(run_dir / "unseen_data_audit.json", {"audit_passed": False})
     write_text(run_dir / "unseen_training_order.jsonl", "")
     write_json(run_dir / "unseen_training_order_sha256.json", {"status": "not_run"})
@@ -376,10 +472,40 @@ def initialize_run(run_dir: Path, run_id: str, checked_at: str) -> None:
             "evaluation_completed": False,
             "p3_3_development_checks_passed": False,
             "g2_precheck": "not_run",
-            "failure_reasons": ["P3-3尚未完成"],
+            "failure_reasons": [f"{stage_id}尚未完成"],
         },
     )
-    write_text(run_dir / "summary.md", "# P3-3摘要\n\n- 状态：尚未开始\n")
+    write_text(run_dir / "summary.md", f"# {stage_id}摘要\n\n- 状态：尚未开始\n")
+
+
+def _csv_rows_by_step(path: Path) -> dict[int, dict[str, str]]:
+    if not path.is_file() or path.stat().st_size == 0:
+        return {}
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return {
+            int(row["checkpoint_step"]): row
+            for row in csv.DictReader(handle)
+        }
+
+
+def _mean_target_losses(path: Path) -> dict[int, dict[str, float]]:
+    if not path.is_file() or path.stat().st_size == 0:
+        return {}
+    grouped: dict[int, dict[str, list[float]]] = {}
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            step = int(row["checkpoint_step"])
+            method = str(row["method"])
+            grouped.setdefault(step, {}).setdefault(method, []).append(
+                float(row["target_token_loss"])
+            )
+    return {
+        step: {
+            method: sum(values) / len(values)
+            for method, values in methods.items()
+        }
+        for step, methods in grouped.items()
+    }
 
 
 def render_summary(run_dir: Path, error: dict[str, str] | None = None) -> str:
@@ -387,8 +513,9 @@ def render_summary(run_dir: Path, error: dict[str, str] | None = None) -> str:
     parent = load_json(run_dir / "parent_p3_2.json")
     comparison = load_json(run_dir / "comparison.json")
     g2 = load_json(run_dir / "g2_precheck.json")
+    stage_id = str(resolved.get("stage_id", "P3-3"))
     lines = [
-        "# P3-3未见下游微调与B1/P指纹保持对比摘要",
+        f"# {stage_id}未见下游微调与B1/P指纹保持对比摘要",
         "",
         f"- 运行编号：`{resolved.get('run_id')}`",
         f"- 状态：`{resolved.get('status')}`",
@@ -413,8 +540,91 @@ def render_summary(run_dir: Path, error: dict[str, str] | None = None) -> str:
         f"- P减B1平均保持率差：`{g2.get('mean_retention_gap')}`",
         f"- 有信息检查点数量：`{g2.get('informative_checkpoint_count')}`",
         f"- G2预检查分类：`{g2.get('g2_precheck')}`",
-        f"- P3-3开发检查通过：`{comparison.get('p3_3_development_checks_passed')}`",
+        f"- {stage_id}开发检查通过：`{comparison.get('p3_3_development_checks_passed')}`",
     ]
+    if stage_id == "P3-3R":
+        parent_p33_path = run_dir / "parent_p3_3.json"
+        config_diff_path = run_dir / "config_diff.json"
+        parent_p33 = load_json(parent_p33_path) if parent_p33_path.is_file() else {}
+        config_diff = load_json(config_diff_path) if config_diff_path.is_file() else {}
+        original_dir_value = parent_p33.get("source_run_directory")
+        original_dir = None
+        if isinstance(original_dir_value, str) and original_dir_value:
+            original_dir = Path(original_dir_value)
+            if not original_dir.is_absolute():
+                original_dir = PROJECT_ROOT / original_dir
+        original_retention = (
+            _csv_rows_by_step(original_dir / "retention_curve.csv")
+            if original_dir is not None
+            else {}
+        )
+        adjusted_retention = _csv_rows_by_step(run_dir / "retention_curve.csv")
+        original_losses = (
+            _mean_target_losses(original_dir / "fingerprint_loss_curve.csv")
+            if original_dir is not None
+            else {}
+        )
+        adjusted_losses = _mean_target_losses(run_dir / "fingerprint_loss_curve.csv")
+        original_capability = (
+            _csv_rows_by_step(original_dir / "capability_curve.csv")
+            if original_dir is not None
+            else {}
+        )
+        adjusted_capability = _csv_rows_by_step(run_dir / "capability_curve.csv")
+        lines.extend(
+            [
+                "",
+                "## 唯一允许的攻击强度调整",
+                "",
+                f"- 原P3-3运行：`{parent_p33.get('run_id')}`",
+                f"- 原学习率：`{parent_p33.get('original_learning_rate')}`",
+                f"- 调整后学习率：`{resolved.get('config', {}).get('learning_rate')}`",
+                f"- 配置差异审计通过：`{config_diff.get('config_audit_passed')}`",
+                f"- 除学习率外无实验参数变化：`{config_diff.get('only_experimental_change_is_learning_rate')}`",
+                "",
+                "### 原P3-3与P3-3R指纹命中及平均目标Token loss",
+                "",
+                "| 检查点 | 原B1/P命中 | P3-3R B1/P命中 | 原B1/P loss | P3-3R B1/P loss |",
+                "| ---: | --- | --- | --- | --- |",
+            ]
+        )
+        for step in EVALUATION_STEPS:
+            old_ret = original_retention.get(step, {})
+            new_ret = adjusted_retention.get(step, {})
+            old_loss = original_losses.get(step, {})
+            new_loss = adjusted_losses.get(step, {})
+            lines.append(
+                "| "
+                f"{step} | {old_ret.get('b1_exact_count', '—')}/{old_ret.get('p_exact_count', '—')} "
+                f"| {new_ret.get('b1_exact_count', '—')}/{new_ret.get('p_exact_count', '—')} "
+                f"| {old_loss.get('b1', '—')}/{old_loss.get('p', '—')} "
+                f"| {new_loss.get('b1', '—')}/{new_loss.get('p', '—')} |"
+            )
+        lines.extend(
+            [
+                "",
+                "### 正常能力变化（completion loss）",
+                "",
+                "| 检查点 | 原P3-3 B1/P相对step 0 | P3-3R B1/P相对step 0 | P3-3R P相对B1 |",
+                "| ---: | --- | --- | --- |",
+            ]
+        )
+        for step in CAPABILITY_STEPS:
+            old_row = original_capability.get(step, {})
+            new_row = adjusted_capability.get(step, {})
+            lines.append(
+                "| "
+                f"{step} | {old_row.get('b1_relative_to_step_0', '—')}/{old_row.get('p_relative_to_step_0', '—')} "
+                f"| {new_row.get('b1_relative_to_step_0', '—')}/{new_row.get('p_relative_to_step_0', '—')} "
+                f"| {new_row.get('p_relative_to_b1', '—')} |"
+            )
+        lines.extend(
+            [
+                "",
+                f"- 调整后攻击是否具有信息量：`{bool(g2.get('informative_checkpoint_count', 0))}`",
+                f"- P是否出现正向信号：`{g2.get('g2_precheck') == 'promising'}`",
+            ]
+        )
     if comparison.get("failure_reasons"):
         lines.extend(["", "## 未通过原因", ""])
         lines.extend(f"- {reason}" for reason in comparison["failure_reasons"])
@@ -424,7 +634,7 @@ def render_summary(run_dir: Path, error: dict[str, str] | None = None) -> str:
         [
             "",
             "> 本结果仅是单个开发训练—密钥组合的方向筛查，不能作为正式论文结论。",
-            "> 本脚本不会自动调整攻击强度、重算P3-2权重或开始P4。",
+            "> 本脚本不会再次调整攻击强度、重算P3-2权重或开始P4。",
             "",
         ]
     )
@@ -439,15 +649,47 @@ def prepare_context(
 ) -> dict[str, Any]:
     config_path = config_path.expanduser().resolve()
     config = load_json(config_path)
-    validate_p33_config(config)
+    original_config_path = PROJECT_ROOT / "configs" / "training" / "p3_3_unseen.json"
+    original_config = load_json(original_config_path)
+    if config.get("stage_id") == "P3-3R":
+        config_diff = validate_p33r_config(config, original_config)
+        parent_p3_3 = validate_parent_p3_3(
+            PROJECT_ROOT / "runs" / PARENT_P3_3_RUN_ID,
+            original_config,
+        )
+        config_diff.update(
+            {
+                "original_config_path": project_relative(original_config_path),
+                "adjusted_config_path": project_relative(config_path),
+                "original_config_sha256": sha256_file(original_config_path),
+                "adjusted_config_sha256": sha256_file(config_path),
+                "original_p3_3_run_id": parent_p3_3["path"].name,
+            }
+        )
+    else:
+        validate_p33_config(config)
+        config_diff = None
+        parent_p3_3 = None
     parent_data = validate_parent_p3_2(
         parent_path, config, require_model_artifacts=require_model_artifacts
     )
-    return {"config_path": config_path, "config": config, **parent_data}
+    return {
+        "config_path": config_path,
+        "config": config,
+        "stage_id": config["stage_id"],
+        "is_adjustment": config["stage_id"] == "P3-3R",
+        "original_config_path": original_config_path,
+        "original_config": original_config,
+        "config_diff": config_diff,
+        "parent_p3_3": parent_p3_3,
+        **parent_data,
+    }
 
 
 def execute_prepare(run_dir: Path, context: dict[str, Any]) -> None:
     config = context["config"]
+    if context["is_adjustment"]:
+        write_json(run_dir / "config_diff.json", context["config_diff"])
     validate_cloud_environment(config)
     print(f"固定P3-2 run ID：{context['parent'].name}")
     print(f"固定P3-1 run ID：{context['p3_1_path'].name}")
@@ -469,7 +711,27 @@ def execute_prepare(run_dir: Path, context: dict[str, Any]) -> None:
         effective_batch_size=effective_batch,
     )
     validate_unseen_training_plan(plan, records, expected_sha256=order_sha)
-    write_text(run_dir / "unseen_training_order.jsonl", training_plan_text(plan))
+    if context["is_adjustment"]:
+        original_plan = context["parent_p3_3"]["plan"]
+        original_order_sha = context["parent_p3_3"]["order_info"][
+            "training_order_sha256"
+        ]
+        validate_unseen_training_plan(
+            original_plan,
+            records,
+            expected_sha256=original_order_sha,
+        )
+        if order_sha != original_order_sha or plan != original_plan:
+            raise RuntimeError("P3-3R重算的训练顺序与原P3-3不一致")
+        plan = original_plan
+        order_sha = original_order_sha
+        source_order = context["parent_p3_3"]["path"] / "unseen_training_order.jsonl"
+        write_text(
+            run_dir / "unseen_training_order.jsonl",
+            source_order.read_text(encoding="utf-8"),
+        )
+    else:
+        write_text(run_dir / "unseen_training_order.jsonl", training_plan_text(plan))
     order_info = {
         "status": "frozen",
         "seed": config["data_seed"],
@@ -492,7 +754,11 @@ def execute_prepare(run_dir: Path, context: dict[str, Any]) -> None:
             "dtype": config["dtype"],
             "device": config["device"],
             "local_files_only": True,
-            "parent_run_ids": [PARENT_P3_2_RUN_ID, PARENT_P3_1_RUN_ID],
+            "parent_run_ids": (
+                [PARENT_P3_3_RUN_ID, PARENT_P3_2_RUN_ID, PARENT_P3_1_RUN_ID]
+                if context["is_adjustment"]
+                else [PARENT_P3_2_RUN_ID, PARENT_P3_1_RUN_ID]
+            ),
             "parent_p3_2_directory": project_relative(context["parent"]),
             "parent_p3_1_directory": project_relative(context["p3_1_path"]),
             "config_path": project_relative(context["config_path"]),
@@ -525,6 +791,33 @@ def execute_prepare(run_dir: Path, context: dict[str, Any]) -> None:
         }
     )
     write_json(run_dir / "resolved_config.json", resolved)
+    if context["is_adjustment"]:
+        write_json(run_dir / "config_diff.json", context["config_diff"])
+        write_json(
+            run_dir / "parent_p3_3.json",
+            {
+                "stage_id": "P3-3",
+                "run_id": context["parent_p3_3"]["path"].name,
+                "source_run_directory": project_relative(
+                    context["parent_p3_3"]["path"]
+                ),
+                "status": "completed",
+                "g2_precheck": context["parent_p3_3"]["g2"]["g2_precheck"],
+                "original_learning_rate": context["original_config"][
+                    "learning_rate"
+                ],
+                "adjusted_learning_rate": config["learning_rate"],
+                "checkpoint_exact_counts": context["parent_p3_3"][
+                    "comparison"
+                ]["checkpoint_exact_counts"],
+                "training_order_sha256": context["parent_p3_3"]["order_info"][
+                    "training_order_sha256"
+                ],
+                "initial_attack_adapter_state_sha256": context["parent_p3_3"][
+                    "initial_attack_adapter_state_sha256"
+                ],
+            },
+        )
     write_json(
         run_dir / "parent_p3_2.json",
         {
@@ -548,7 +841,7 @@ def execute_prepare(run_dir: Path, context: dict[str, Any]) -> None:
         {
             "parent_p3_2_passed": True,
             "data_audit_passed": True,
-            "failure_reasons": ["P3-3训练和评估尚未完成"],
+            "failure_reasons": [f"{context['stage_id']}训练和评估尚未完成"],
         }
     )
     write_json(run_dir / "comparison.json", comparison)
@@ -962,6 +1255,53 @@ def execute_train(run_dir: Path, context: dict[str, Any]) -> None:
         data_audit=audit,
         config=context["config"],
     )
+    if context["is_adjustment"]:
+        original = context["parent_p3_3"]
+        original_summaries = original["training_summaries"]
+        fairness.update(
+            {
+                "same_training_order_as_original_p3_3": order_info[
+                    "training_order_sha256"
+                ]
+                == original["order_info"]["training_order_sha256"],
+                "same_checkpoint_steps_as_original_p3_3": all(
+                    summary.get("checkpoint_steps")
+                    == original_summaries[method].get("checkpoint_steps")
+                    for method, summary in summaries.items()
+                ),
+                "same_max_steps_as_original_p3_3": all(
+                    summary.get("max_steps")
+                    == original_summaries[method].get("max_steps")
+                    for method, summary in summaries.items()
+                ),
+                "same_lora_config_as_original_p3_3": all(
+                    summary.get("lora_config")
+                    == original_summaries[method].get("lora_config")
+                    for method, summary in summaries.items()
+                ),
+                "same_random_seed_as_original_p3_3": all(
+                    summary.get("seed") == original_summaries[method].get("seed")
+                    for method, summary in summaries.items()
+                ),
+                "same_initial_attack_adapter_state_as_original_p3_3": all(
+                    summary.get("initial_attack_adapter_state_sha256")
+                    == original["initial_attack_adapter_state_sha256"]
+                    for summary in summaries.values()
+                ),
+                "only_change_from_original_p3_3": "learning_rate",
+                "only_change_from_original_p3_3_verified": context[
+                    "config_diff"
+                ].get("only_experimental_change_is_learning_rate")
+                is True,
+                "original_learning_rate": context["original_config"][
+                    "learning_rate"
+                ],
+                "adjusted_learning_rate": context["config"]["learning_rate"],
+            }
+        )
+        fairness["all_checks_passed"] = all(
+            value for value in fairness.values() if isinstance(value, bool)
+        )
     write_json(run_dir / "fairness_audit.json", fairness)
     if not fairness["all_checks_passed"]:
         raise RuntimeError("B1/P攻击训练公平性审计未通过")
@@ -1315,6 +1655,13 @@ def execute_evaluate(run_dir: Path, context: dict[str, Any]) -> bool:
         step_750_smoke_passed=bool(capability_comparison["checks"]["b1_generation_smoke_passed"] and capability_comparison["checks"]["p_generation_smoke_passed"]),
         config=context["config"],
     )
+    if context["is_adjustment"]:
+        original_classification = g2["g2_precheck"]
+        g2["base_classification_before_adjustment_mapping"] = original_classification
+        g2["g2_precheck"] = classify_p33r_result(original_classification)
+        g2["allowed_adjustment_index"] = 1
+        g2["allowed_adjustment_limit"] = 1
+        g2["further_attack_adjustment_allowed"] = False
     g2["paired_retention_details"] = retention_details
     write_json(run_dir / "g2_precheck.json", g2)
     fairness = load_json(run_dir / "fairness_audit.json")
@@ -1378,6 +1725,14 @@ def execute_evaluate(run_dir: Path, context: dict[str, Any]) -> bool:
             "informative_checkpoint_count": g2["informative_checkpoint_count"],
             "g2_precheck": g2["g2_precheck"],
             "p3_3_development_checks_passed": not failure_reasons,
+            "p3_3r_development_checks_passed": (
+                not failure_reasons if context["is_adjustment"] else None
+            ),
+            "only_change_from_original_p3_3": (
+                fairness.get("only_change_from_original_p3_3")
+                if context["is_adjustment"]
+                else None
+            ),
             "failure_reasons": failure_reasons,
             "formal_conclusion_allowed": False,
         }
@@ -1386,7 +1741,7 @@ def execute_evaluate(run_dir: Path, context: dict[str, Any]) -> bool:
     resolved["status"] = "completed"
     write_json(run_dir / "resolved_config.json", resolved)
     write_text(run_dir / "summary.md", render_summary(run_dir))
-    print(f"P3-3完成，G2预检查分类：{g2['g2_precheck']}")
+    print(f"{context['stage_id']}完成，G2预检查分类：{g2['g2_precheck']}")
     return not failure_reasons
 
 
@@ -1408,7 +1763,11 @@ def update_failure(run_dir: Path, stage: str, exc: Exception) -> None:
                 summary.setdefault("errors", []).append(error)
                 write_json(path, summary)
     write_text(run_dir / "summary.md", render_summary(run_dir, error))
-    print(f"P3-3 {stage}失败：{error['type']}：{error['message']}", file=sys.stderr)
+    print(
+        f"{resolved.get('stage_id', 'P3-3')} {stage}失败："
+        f"{error['type']}：{error['message']}",
+        file=sys.stderr,
+    )
     print(f"输出目录：{run_dir}")
 
 
@@ -1416,6 +1775,9 @@ def context_for_existing_run(
     args: argparse.Namespace, run_dir: Path
 ) -> dict[str, Any]:
     resolved = load_json(run_dir / "resolved_config.json")
+    config_preview = load_json(args.config.expanduser().resolve())
+    if resolved.get("stage_id") != config_preview.get("stage_id"):
+        raise RuntimeError("运行目录阶段与命令指定配置不一致")
     parent_value = resolved.get("parent_p3_2_directory")
     if not isinstance(parent_value, str) or not parent_value:
         raise RuntimeError("P3-3 resolved_config缺少P3-2父目录")
@@ -1433,8 +1795,29 @@ def context_for_existing_run(
     return context
 
 
+def preflight_config(config_path: Path) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """在创建运行目录前验证配置，避免无效调整留下空目录。"""
+
+    config = load_json(config_path.expanduser().resolve())
+    if config.get("stage_id") == "P3-3R":
+        original = load_json(
+            PROJECT_ROOT / "configs" / "training" / "p3_3_unseen.json"
+        )
+        return config, validate_p33r_config(config, original)
+    validate_p33_config(config)
+    return config, None
+
+
 def main() -> int:
     args = parse_args()
+    try:
+        config_preview, _config_diff = preflight_config(args.config)
+    except Exception as exc:
+        print(f"配置审计失败：{sanitize_text(exc)}", file=sys.stderr)
+        return 3
+    stage_id = config_preview["stage_id"]
+    is_adjustment = stage_id == "P3-3R"
+    run_prefix = "p3_3r_unseen_lr5e4_" if is_adjustment else "p3_3_unseen_"
     creating = args.stage in {"prepare", "all"}
     if creating:
         if args.run_dir is not None:
@@ -1442,14 +1825,20 @@ def main() -> int:
             return 3
         checked_at = datetime.now().astimezone()
         try:
-            run_id, run_dir = create_unique_p33_run_directory(
-                PROJECT_ROOT / "runs", checked_at
+            creator = (
+                create_unique_p33r_run_directory
+                if is_adjustment
+                else create_unique_p33_run_directory
             )
+            run_id, run_dir = creator(PROJECT_ROOT / "runs", checked_at)
             initialize_run(
-                run_dir, run_id, checked_at.isoformat(timespec="seconds")
+                run_dir,
+                run_id,
+                checked_at.isoformat(timespec="seconds"),
+                stage_id=stage_id,
             )
         except Exception as exc:
-            print(f"无法创建P3-3运行目录：{sanitize_text(exc)}", file=sys.stderr)
+            print(f"无法创建{stage_id}运行目录：{sanitize_text(exc)}", file=sys.stderr)
             return 3
         log_mode = "w"
     else:
@@ -1457,9 +1846,9 @@ def main() -> int:
             print(f"{args.stage}必须传入--run-dir", file=sys.stderr)
             return 3
         try:
-            run_dir = resolve_run_directory(args.run_dir, "p3_3_unseen_")
+            run_dir = resolve_run_directory(args.run_dir, run_prefix)
         except Exception as exc:
-            print(f"无效P3-3运行目录：{sanitize_text(exc)}", file=sys.stderr)
+            print(f"无效{stage_id}运行目录：{sanitize_text(exc)}", file=sys.stderr)
             return 3
         log_mode = "a"
 
@@ -1473,7 +1862,7 @@ def main() -> int:
         with redirect_stdout(TeeStream(sys.stdout, log_file)), redirect_stderr(
             TeeStream(sys.stderr, log_file)
         ):
-            print(f"P3-3阶段：{args.stage}")
+            print(f"{stage_id}阶段：{args.stage}")
             print(f"终端日志：{terminal_path}")
             current_stage = "prepare" if creating else args.stage
             try:

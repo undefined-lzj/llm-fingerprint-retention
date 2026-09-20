@@ -14,21 +14,31 @@ from fingerprint.p33 import (
     compute_capability_curve,
     compute_g2_precheck,
     compute_retention_outputs,
+    classify_p33r_result,
     create_unique_p33_run_directory,
+    create_unique_p33r_run_directory,
     training_plan_sha256,
     training_records_sha256,
     validate_p33_config,
+    validate_p33r_config,
     validate_unseen_training_plan,
 )
 from scripts.run_p3_3_unseen import (
     checkpoint_is_complete,
     latest_complete_checkpoint,
     validate_parent_p3_2,
+    validate_parent_p3_3,
 )
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = PROJECT_ROOT / "configs" / "training" / "p3_3_unseen.json"
+ADJUSTED_CONFIG_PATH = (
+    PROJECT_ROOT / "configs" / "training" / "p3_3_unseen_lr5e4.json"
+)
+ORIGINAL_P33_RUN = (
+    PROJECT_ROOT / "runs" / "p3_3_unseen_20260919_223521_863957a1"
+)
 FINGERPRINT_PATH = (
     PROJECT_ROOT / "configs" / "fingerprints" / "p3_dev_fingerprints.json"
 )
@@ -82,6 +92,9 @@ class P33UnseenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        cls.adjusted_config = json.loads(
+            ADJUSTED_CONFIG_PATH.read_text(encoding="utf-8")
+        )
         cls.manifest = load_p3_fingerprint_manifest(
             FINGERPRINT_PATH, FINGERPRINT_SHA_PATH
         )
@@ -91,6 +104,40 @@ class P33UnseenTests(unittest.TestCase):
 
     def test_fixed_config_is_valid(self):
         validate_p33_config(self.config)
+
+    def test_p33r_config_changes_only_learning_rate(self):
+        diff = validate_p33r_config(self.adjusted_config, self.config)
+        self.assertTrue(diff["config_audit_passed"])
+        self.assertTrue(diff["only_experimental_change_is_learning_rate"])
+        self.assertEqual(
+            diff["experimental_parameter_changes"],
+            {
+                "learning_rate": {
+                    "original": 2e-4,
+                    "adjusted": 5e-4,
+                }
+            },
+        )
+
+    def test_p33r_config_rejects_a_second_experimental_change(self):
+        changed = dict(self.adjusted_config)
+        changed["max_steps"] = 751
+        with self.assertRaisesRegex(ValueError, "learning_rate"):
+            validate_p33r_config(changed, self.config)
+
+    def test_downloaded_original_p33_is_the_fixed_weak_attack_parent(self):
+        result = validate_parent_p3_3(ORIGINAL_P33_RUN, self.config)
+        self.assertEqual(
+            result["g2"]["g2_precheck"], "inconclusive_attack_too_weak"
+        )
+        self.assertEqual(
+            result["comparison"]["checkpoint_exact_counts"]["750"],
+            {"b1": 32, "p": 32},
+        )
+        self.assertEqual(
+            result["order_info"]["training_order_sha256"],
+            "a2e700820de24a8d9c70d7211d73b413f78433b3a98b03cef924713c7afc9810",
+        )
 
     def test_downloaded_fixed_p3_2_parent_metadata_is_valid(self):
         parent = (
@@ -104,6 +151,12 @@ class P33UnseenTests(unittest.TestCase):
         self.assertTrue(context["comparison"]["p3_2_passed"])
         self.assertEqual(context["p3_1_path"].name, "p3_1_b0_20260919_161713_67cacee1")
         self.assertEqual(set(context["weights"]), set(self.fingerprint_ids))
+        adjusted_context = validate_parent_p3_2(
+            parent, self.adjusted_config, require_model_artifacts=False
+        )
+        self.assertEqual(
+            adjusted_context["resolved"]["config"]["learning_rate"], 2e-4
+        )
 
     def test_four_frozen_splits_are_disjoint_and_unseen_is_clean(self):
         splits = {
@@ -257,6 +310,20 @@ class P33UnseenTests(unittest.TestCase):
         )
         self.assertEqual(no_signal["g2_precheck"], "no_positive_signal")
 
+    def test_p33r_maps_terminal_classifications_without_changing_thresholds(self):
+        self.assertEqual(classify_p33r_result("promising"), "promising")
+        self.assertEqual(
+            classify_p33r_result("no_positive_signal"), "no_positive_signal"
+        )
+        self.assertEqual(
+            classify_p33r_result("inconclusive_attack_too_weak"),
+            "inconclusive_after_allowed_adjustment",
+        )
+        self.assertEqual(
+            classify_p33r_result("inconclusive_attack_too_strong"),
+            "attack_too_strong_after_adjustment",
+        )
+
     def test_fairness_audit_requires_same_initial_attack_state(self):
         summary = {
             "training_examples_sha256": "examples",
@@ -301,6 +368,18 @@ class P33UnseenTests(unittest.TestCase):
             self.assertNotEqual(first_id, second_id)
             self.assertTrue(first.is_dir())
             self.assertTrue(second.is_dir())
+            adjusted_first_id, adjusted_first = create_unique_p33r_run_directory(
+                root, fixed
+            )
+            adjusted_second_id, adjusted_second = create_unique_p33r_run_directory(
+                root, fixed
+            )
+            self.assertNotEqual(adjusted_first_id, adjusted_second_id)
+            self.assertTrue(
+                adjusted_first_id.startswith("p3_3r_unseen_lr5e4_20260919_203000_")
+            )
+            self.assertTrue(adjusted_first.is_dir())
+            self.assertTrue(adjusted_second.is_dir())
 
     def test_resume_uses_latest_complete_checkpoint_and_archives_partial_one(self):
         with tempfile.TemporaryDirectory() as temporary:

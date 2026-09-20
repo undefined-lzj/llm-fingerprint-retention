@@ -20,9 +20,23 @@ from fingerprint.p32 import EXPECTED_MODEL_ID, EXPECTED_REVISION, EXPECTED_TARGE
 
 PARENT_P3_2_RUN_ID = "p3_2_feedback_20260919_175034_9735564b"
 PARENT_P3_1_RUN_ID = "p3_1_b0_20260919_161713_67cacee1"
+PARENT_P3_3_RUN_ID = "p3_3_unseen_20260919_223521_863957a1"
 ATTACK_STEPS = (125, 375, 750)
 EVALUATION_STEPS = (0, 125, 375, 750)
 CAPABILITY_STEPS = (0, 375, 750)
+P33R_METADATA_FIELDS = {
+    "stage_id",
+    "parent_stage",
+    "parent_p3_3_run_id",
+    "adjustment_type",
+    "adjustment_reason",
+    "original_learning_rate",
+    "adjusted_learning_rate",
+    "allowed_adjustment_index",
+    "allowed_adjustment_limit",
+    "run_id",
+    "created_at",
+}
 
 
 def validate_p33_config(config: dict[str, Any]) -> None:
@@ -88,6 +102,102 @@ def validate_p33_config(config: dict[str, Any]) -> None:
         raise ValueError("P3-3必须继承代理训练的有效batch size 4")
     if config["max_steps"] * effective_batch != 3000:
         raise ValueError("P3-3固定750步必须恰好消费三轮未见数据")
+
+
+def compare_p33r_config(
+    original: dict[str, Any], adjusted: dict[str, Any]
+) -> dict[str, Any]:
+    """审计P3-3R配置，实验参数只允许learning_rate发生一次变化。"""
+
+    validate_p33_config(original)
+    expected_metadata = {
+        "stage_id": "P3-3R",
+        "parent_stage": "P3-3",
+        "parent_p3_3_run_id": PARENT_P3_3_RUN_ID,
+        "adjustment_type": "attack_strength_single_factor",
+        "adjustment_reason": "attack_too_weak",
+        "original_learning_rate": 2e-4,
+        "adjusted_learning_rate": 5e-4,
+        "allowed_adjustment_index": 1,
+        "allowed_adjustment_limit": 1,
+    }
+    for field, expected in expected_metadata.items():
+        if adjusted.get(field) != expected:
+            raise ValueError(f"P3-3R元数据字段{field}必须为{expected!r}")
+    missing = sorted(
+        field
+        for field in original
+        if field not in adjusted and field not in P33R_METADATA_FIELDS
+    )
+    if missing:
+        raise ValueError("P3-3R缺少原实验字段：" + ", ".join(missing))
+    unexpected = sorted(
+        field
+        for field in adjusted
+        if field not in original and field not in P33R_METADATA_FIELDS
+    )
+    if unexpected:
+        raise ValueError("P3-3R包含未授权实验字段：" + ", ".join(unexpected))
+
+    changes: dict[str, dict[str, Any]] = {}
+    for field in sorted(set(original) | set(adjusted)):
+        before = original.get(field, "__MISSING__")
+        after = adjusted.get(field, "__MISSING__")
+        if before != after:
+            changes[field] = {"original": before, "adjusted": after}
+    experimental_changes = {
+        field: values
+        for field, values in changes.items()
+        if field not in P33R_METADATA_FIELDS
+    }
+    expected_experimental_change = {
+        "learning_rate": {"original": 2e-4, "adjusted": 5e-4}
+    }
+    if experimental_changes != expected_experimental_change:
+        changed = ", ".join(experimental_changes) or "无"
+        raise ValueError(
+            "P3-3R除learning_rate外不得改变实验参数；实际变化：" + changed
+        )
+    return {
+        "schema_version": 1,
+        "stage_id": "P3-3R",
+        "parent_stage": "P3-3",
+        "parent_p3_3_run_id": PARENT_P3_3_RUN_ID,
+        "adjustment_type": "attack_strength_single_factor",
+        "adjustment_reason": "attack_too_weak",
+        "allowed_adjustment_index": 1,
+        "allowed_adjustment_limit": 1,
+        "allowed_metadata_fields": sorted(P33R_METADATA_FIELDS),
+        "all_changes": changes,
+        "experimental_parameter_changes": experimental_changes,
+        "only_experimental_change_is_learning_rate": True,
+        "config_audit_passed": True,
+    }
+
+
+def validate_p33r_config(
+    config: dict[str, Any], original: dict[str, Any]
+) -> dict[str, Any]:
+    diff = compare_p33r_config(original, config)
+    effective_batch = (
+        config["per_device_train_batch_size"]
+        * config["gradient_accumulation_steps"]
+    )
+    if effective_batch != 4 or config["max_steps"] * effective_batch != 3000:
+        raise ValueError("P3-3R必须保持有效batch size 4、750步和三轮数据")
+    return diff
+
+
+def classify_p33r_result(original_classification: str) -> str:
+    mapping = {
+        "promising": "promising",
+        "no_positive_signal": "no_positive_signal",
+        "inconclusive_attack_too_weak": "inconclusive_after_allowed_adjustment",
+        "inconclusive_attack_too_strong": "attack_too_strong_after_adjustment",
+    }
+    if original_classification not in mapping:
+        raise ValueError(f"未知P3-3R预检查分类：{original_classification}")
+    return mapping[original_classification]
 
 
 def normalize_audit_text(value: Any) -> str:
@@ -690,3 +800,19 @@ def create_unique_p33_run_directory(
             continue
         return run_id, run_dir
     raise OSError("连续生成的P3-3运行目录名称发生冲突")
+
+
+def create_unique_p33r_run_directory(
+    runs_root: Path, now: datetime | None = None
+) -> tuple[str, Path]:
+    timestamp = (now or datetime.now().astimezone()).strftime("%Y%m%d_%H%M%S")
+    runs_root.mkdir(parents=True, exist_ok=True)
+    for _ in range(100):
+        run_id = f"p3_3r_unseen_lr5e4_{timestamp}_{uuid.uuid4().hex[:8]}"
+        run_dir = runs_root / run_id
+        try:
+            run_dir.mkdir(parents=False, exist_ok=False)
+        except FileExistsError:
+            continue
+        return run_id, run_dir
+    raise OSError("连续生成的P3-3R运行目录名称发生冲突")
